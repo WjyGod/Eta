@@ -77,6 +77,8 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 仓库里同时存在 origin 与 upstream 两个远端，不指定会把 Release 建到上游仓库
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p out

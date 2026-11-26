@@ -1,0 +1,91 @@
+name: A13 自动构建
+
+# 每天追平上游 main：能合并就用 Android 13 兼容补丁重新出包，并把最新 Debug APK
+# 覆盖上传到 a13-latest 这个滚动 Release，手机可以直接从固定链接下载。
+# 合并冲突时任务失败并停在 a13-auto 分支的现状，等人工 rebase。
+
+on:
+  schedule:
+    # UTC 20:00 = 北京时间次日 04:00
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: a13-auto-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 追平上游并构建 Android 13 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 检出 a13-auto
+        uses: actions/checkout@v4
+        with:
+          ref: a13-auto
+          fetch-depth: 0
+
+      - name: 合并上游 main
+        id: sync
+        run: |
+          set -euo pipefail
+          git config user.name "eta-a13-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Mangi-11/Eta.git 2>/dev/null || true
+          git fetch --no-tags --prune upstream main
+
+          # 定时任务只在上游有新提交时构建；手动触发一律重新构建
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ] && git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "上游没有新提交，跳过构建"
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+          if ! git merge --no-edit FETCH_HEAD; then
+            git merge --abort || true
+            echo "::error::上游改动与 Android 13 兼容补丁冲突，需要人工 rebase a13-auto 分支"
+            exit 1
+          fi
+          git push origin HEAD:a13-auto
+
+      - name: 配置构建环境
+        if: steps.sync.outputs.changed == 'true'
+        uses: ./.github/actions/setup-build
+
+      - name: 构建 Debug APK
+        if: steps.sync.outputs.changed == 'true'
+        run: >-
+          ./gradlew --no-daemon --no-configuration-cache
+          "-Peta.buildMetadata=${GITHUB_SHA::7}"
+          :app:assembleDebug
+
+      - name: 上传构建产物
+        if: steps.sync.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eta-a13-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      - name: 更新滚动 Release
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/Eta-a13-debug.apk
+          if ! gh release view a13-latest >/dev/null 2>&1; then
+            gh release create a13-latest \
+              --target a13-auto \
+              --title "Android 13 自动构建" \
+              --notes "每天追平上游 main 后重新构建的 Android 13 Debug APK。Debug 签名，安装前需卸载正式版。" \
+              --prerelease
+          fi
+          gh release upload a13-latest out/Eta-a13-debug.apk --clobber

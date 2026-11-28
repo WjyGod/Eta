@@ -69,6 +69,14 @@ internal object VirtualDisplayCommandMain {
     const val READY_PREFIX = "ETA_VD_READY:"
     const val RESULT_PREFIX = "ETA_VD_RESULT:"
 
+    /**
+     * 诊断信息专用前缀。
+     *
+     * 宿主把 stderr 合并进 stdout 后按行解析协议，任何以 RESULT_PREFIX 开头的行都会被当成
+     * 创建失败并立刻结束等待（即使 ok=true），因此降级/回退这类"仍然成功"的提示必须走这里。
+     */
+    const val NOTE_PREFIX = "ETA_VD_NOTE:"
+
     // 静态强引用持有 VirtualDisplay 与 Surface，防止 ART 局部栈帧优化在等待期间提前触发 GC finalize 销毁虚拟屏。
     @Volatile
     private var retainedVirtualDisplay: android.hardware.display.VirtualDisplay? = null
@@ -184,7 +192,7 @@ internal object VirtualDisplayCommandMain {
             exitProcess(1)
         }
         if (!imePolicyResult.ok) {
-            System.err.println("$RESULT_PREFIX" + JSONObject()
+            System.err.println("$NOTE_PREFIX" + JSONObject()
                 .put("ok", true)
                 .put("code", "DISPLAY_IME_POLICY_DEGRADED")
                 .put("reason", imePolicyResult.reason))
@@ -383,7 +391,7 @@ internal object VirtualDisplayCommandMain {
         // Android 13：受信公共屏被系统拒绝（缺少 ADD_TRUSTED_DISPLAY 或 ROM 额外收紧）时，
         // 回退到不受信公共屏保证画布仍可用；但 WMS 会忽略 setDisplayImePolicy，输入法可能落到主屏。
         System.err.println(
-            "$RESULT_PREFIX" + JSONObject().put("ok", true).put("code", "TRUSTED_DISPLAY_REJECTED"),
+            "$NOTE_PREFIX" + JSONObject().put("ok", true).put("code", "TRUSTED_DISPLAY_REJECTED"),
         )
         return createVirtualDisplayWithFlags(
             surface,

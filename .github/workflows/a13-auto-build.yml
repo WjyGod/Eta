@@ -54,6 +54,15 @@ jobs:
           fi
           git push origin HEAD:a13-auto
 
+      # 不缓存时 Gradle 每次都在新 runner 上生成新的 debug keystore，
+      # 每版 APK 签名都不同，只能卸载重装（会清空数据）。固定一份密钥后即可覆盖安装。
+      - name: 复用 Debug 签名密钥
+        if: steps.sync.outputs.changed == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: eta-a13-debug-keystore-v1
+
       - name: 配置构建环境
         if: steps.sync.outputs.changed == 'true'
         uses: ./.github/actions/setup-build

@@ -62,7 +62,7 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         run: >-
           ./gradlew --no-daemon --no-configuration-cache
-          "-Peta.buildMetadata=${GITHUB_SHA::7}"
+          "-Peta.buildMetadata=$(git rev-parse --short HEAD)"
           :app:assembleDebug
 
       - name: 上传构建产物

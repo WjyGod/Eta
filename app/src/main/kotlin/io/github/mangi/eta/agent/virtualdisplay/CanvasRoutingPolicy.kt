@@ -58,11 +58,26 @@ internal object CanvasRoutingPolicy {
             FLAG_STEAL_TOP_FOCUS_DISABLED
 
     /**
-     * Android 13 的公共虚拟屏标志组合。
+     * Android 13 的受信公共虚拟屏标志组合。
      *
-     * Android 13 的 DisplayManagerService 只接受 PUBLIC / SUPPORTS_TOUCH 等旧标志位，
-     * 且不允许公共屏与 OWN_CONTENT_ONLY 同时出现；TRUSTED、OWN_FOCUS、
-     * STEAL_TOP_FOCUS_DISABLED 由 Android 14 引入，旧系统传下去会被直接忽略。
+     * VIRTUAL_DISPLAY_FLAG_TRUSTED 是 Android 13 就有的能力（DisplayManagerService 以
+     * ADD_TRUSTED_DISPLAY 校验，signature|role，系统 UID 1000 自带）；只有 OWN_FOCUS 与
+     * STEAL_TOP_FOCUS_DISABLED 是 Android 14 才引入。
+     * 不带 TRUSTED 的公共屏在 WMS 里属于"不受信"显示，setDisplayImePolicy 会被直接忽略，
+     * 输入法于是按 fallback 弹到物理主屏，画布内永远拿不到键盘。
+     */
+    const val ANDROID13_TRUSTED_INTERACTIVE_FLAGS: Int =
+        FLAG_PUBLIC or
+            FLAG_SUPPORTS_TOUCH or
+            FLAG_ALWAYS_UNLOCKED or
+            FLAG_TOUCH_FEEDBACK_DISABLED or
+            FLAG_TRUSTED
+
+    /**
+     * 最后的兜底组合：不带 TRUSTED。
+     *
+     * 仅用于设备拒绝受信公共屏（缺少 ADD_TRUSTED_DISPLAY 或 ROM 额外收紧）时：画布仍能创建，
+     * 但输入法隔离失效，setDisplayImePolicy 不会生效。
      */
     const val LEGACY_INTERACTIVE_FLAGS: Int =
         FLAG_PUBLIC or
@@ -76,9 +91,20 @@ internal object CanvasRoutingPolicy {
     /** 独立焦点（OWN_FOCUS）与禁止抢占顶层焦点只有 Android 14+ 具备。 */
     fun requiresTrustedDisplayFlags(sdkInt: Int): Boolean = sdkInt >= 34
 
-    /** 按系统版本选择虚拟屏标志：Android 14+ 用受信任组合，Android 13 回退到公共可触摸组合。 */
+    /**
+     * 按系统版本选择虚拟屏标志：Android 14+ 用完整受信组合，Android 13 用受信公共屏组合。
+     *
+     * Android 13 只有带 TRUSTED 的显示才能设置 IME 策略；退到不带 TRUSTED 的组合时，
+     * WMS 会忽略 setDisplayImePolicy，输入法按 fallback 落到物理主屏。
+     */
     fun interactiveFlags(sdkInt: Int): Int =
-        if (requiresTrustedDisplayFlags(sdkInt)) TRUSTED_INTERACTIVE_FLAGS else LEGACY_INTERACTIVE_FLAGS
+        if (requiresTrustedDisplayFlags(sdkInt)) TRUSTED_INTERACTIVE_FLAGS else ANDROID13_TRUSTED_INTERACTIVE_FLAGS
+
+    /** 设备拒绝受信公共屏时的兜底标志：画布仍可创建，但输入法隔离失效。 */
+    fun legacyInteractiveFlags(): Int = LEGACY_INTERACTIVE_FLAGS
+
+    /** 显示是否取得系统 TRUSTED 标志；只有受信显示才能设置 IME 策略。 */
+    fun hasTrustedDisplayFlag(flags: Int): Boolean = (flags and DISPLAY_FLAG_TRUSTED) != 0
 
     fun hasRequiredDisplayFlags(flags: Int, sdkInt: Int): Boolean {
         if (!requiresTrustedDisplayFlags(sdkInt)) return true

@@ -369,6 +369,38 @@ internal object VirtualDisplayCommandMain {
         width: Int,
         height: Int,
         densityDpi: Int,
+    ): android.hardware.display.VirtualDisplay? {
+        val sdkInt = android.os.Build.VERSION.SDK_INT
+        val primary = createVirtualDisplayWithFlags(
+            surface,
+            width,
+            height,
+            densityDpi,
+            CanvasRoutingPolicy.interactiveFlags(sdkInt),
+        )
+        if (primary != null) return primary
+        if (CanvasRoutingPolicy.requiresTrustedDisplayFlags(sdkInt)) return null
+        // Android 13：受信公共屏被系统拒绝（缺少 ADD_TRUSTED_DISPLAY 或 ROM 额外收紧）时，
+        // 回退到不受信公共屏保证画布仍可用；但 WMS 会忽略 setDisplayImePolicy，输入法可能落到主屏。
+        System.err.println(
+            "$RESULT_PREFIX" + JSONObject().put("ok", true).put("code", "TRUSTED_DISPLAY_REJECTED"),
+        )
+        return createVirtualDisplayWithFlags(
+            surface,
+            width,
+            height,
+            densityDpi,
+            CanvasRoutingPolicy.legacyInteractiveFlags(),
+        )
+    }
+
+    @android.annotation.SuppressLint("WrongConstant")
+    private fun createVirtualDisplayWithFlags(
+        surface: Surface,
+        width: Int,
+        height: Int,
+        densityDpi: Int,
+        flags: Int,
     ): android.hardware.display.VirtualDisplay? = runCatching {
         val activityThreadClass = Class.forName("android.app.ActivityThread")
         val thread = activityThreadClass.getMethod("systemMain").invoke(null)
@@ -381,7 +413,7 @@ internal object VirtualDisplayCommandMain {
                 densityDpi,
             )
                 .setSurface(surface)
-                .setFlags(CanvasRoutingPolicy.interactiveFlags(android.os.Build.VERSION.SDK_INT))
+                .setFlags(flags)
                 .build()
             val dmgClass = Class.forName("android.hardware.display.DisplayManagerGlobal")
             val dmg = dmgClass.getMethod("getInstance").invoke(null)
@@ -409,7 +441,7 @@ internal object VirtualDisplayCommandMain {
                 height,
                 densityDpi,
                 surface,
-                CanvasRoutingPolicy.interactiveFlags(android.os.Build.VERSION.SDK_INT),
+                flags,
             )
         }
     }.getOrNull()

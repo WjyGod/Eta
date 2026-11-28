@@ -117,12 +117,12 @@ class CanvasRoutingPolicyTest {
     }
 
     @Test
-    fun backgroundDisplayAvailableFromAndroid13WithLegacyFlags() {
+    fun backgroundDisplayAvailableFromAndroid13WithTrustedPublicFlags() {
         assertTrue(CanvasRoutingPolicy.supportsBackgroundDisplay(33))
         assertTrue(CanvasRoutingPolicy.supportsBackgroundDisplay(34))
         assertTrue(CanvasRoutingPolicy.supportsBackgroundDisplay(37))
         assertEquals(
-            CanvasRoutingPolicy.LEGACY_INTERACTIVE_FLAGS,
+            CanvasRoutingPolicy.ANDROID13_TRUSTED_INTERACTIVE_FLAGS,
             CanvasRoutingPolicy.interactiveFlags(33),
         )
         assertEquals(
@@ -132,8 +132,27 @@ class CanvasRoutingPolicyTest {
     }
 
     @Test
+    fun android13InteractiveFlagsRequestTrustedDisplayWithoutAndroid14FocusBits() {
+        val flags = CanvasRoutingPolicy.interactiveFlags(33)
+        assertEquals(CanvasRoutingPolicy.ANDROID13_TRUSTED_INTERACTIVE_FLAGS, flags)
+        assertTrue((flags and CanvasRoutingPolicy.FLAG_TRUSTED) != 0)
+        assertTrue((flags and CanvasRoutingPolicy.FLAG_PUBLIC) != 0)
+        assertTrue((flags and CanvasRoutingPolicy.FLAG_SUPPORTS_TOUCH) != 0)
+        assertFalse((flags and CanvasRoutingPolicy.FLAG_OWN_FOCUS) != 0)
+        assertFalse((flags and CanvasRoutingPolicy.FLAG_STEAL_TOP_FOCUS_DISABLED) != 0)
+        assertFalse((flags and CanvasRoutingPolicy.FLAG_OWN_CONTENT_ONLY) != 0)
+    }
+
+    @Test
+    fun trustedDisplayFlagDetectsPlatformTrust() {
+        assertTrue(CanvasRoutingPolicy.hasTrustedDisplayFlag(1 shl 7))
+        assertFalse(CanvasRoutingPolicy.hasTrustedDisplayFlag(0))
+    }
+
+    @Test
     fun legacyInteractiveFlagsDoNotUseAndroid14TrustedBits() {
-        val flags = CanvasRoutingPolicy.LEGACY_INTERACTIVE_FLAGS
+        val flags = CanvasRoutingPolicy.legacyInteractiveFlags()
+        assertEquals(CanvasRoutingPolicy.LEGACY_INTERACTIVE_FLAGS, flags)
         assertTrue((flags and CanvasRoutingPolicy.FLAG_PUBLIC) != 0)
         assertTrue((flags and CanvasRoutingPolicy.FLAG_SUPPORTS_TOUCH) != 0)
         assertFalse((flags and CanvasRoutingPolicy.FLAG_TRUSTED) != 0)
@@ -155,7 +174,7 @@ class CanvasRoutingPolicyTest {
     }
 
     @Test
-    fun android13OnlyRequiresValidDisplayBecauseTrustedBitsAreAbsent() {
+    fun android13OnlyRequiresValidDisplayBecauseFocusBitsAreAbsent() {
         assertTrue(CanvasRoutingPolicy.hasRequiredDisplayFlags(0, 33))
         assertTrue(CanvasRoutingPolicy.hasRequiredDisplayFlags(1 shl 7, 33))
         assertEquals("NONE_LEGACY_DISPLAY", CanvasRoutingPolicy.missingDisplayFlagsDescription(0, 33))

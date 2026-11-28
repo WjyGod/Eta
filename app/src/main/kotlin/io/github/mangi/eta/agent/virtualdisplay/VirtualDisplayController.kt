@@ -656,6 +656,38 @@ internal object VirtualDisplayController {
         width: Int,
         height: Int,
         densityDpi: Int,
+    ): VirtualDisplay? {
+        val sdkInt = Build.VERSION.SDK_INT
+        val primary = createInProcessVirtualDisplayWithFlags(
+            appContext,
+            surface,
+            width,
+            height,
+            densityDpi,
+            CanvasRoutingPolicy.interactiveFlags(sdkInt),
+        )
+        if (primary != null) return primary
+        if (CanvasRoutingPolicy.requiresTrustedDisplayFlags(sdkInt)) return null
+        // Android 13 上没有 system_server Hook 时拿不到 ADD_TRUSTED_DISPLAY，回退到不受信公共屏：
+        // 画布可用，但 WMS 会忽略 IME 策略，输入法可能落到物理主屏。
+        return createInProcessVirtualDisplayWithFlags(
+            appContext,
+            surface,
+            width,
+            height,
+            densityDpi,
+            CanvasRoutingPolicy.legacyInteractiveFlags(),
+        )
+    }
+
+    @android.annotation.SuppressLint("WrongConstant")
+    private fun createInProcessVirtualDisplayWithFlags(
+        appContext: Context,
+        surface: android.view.Surface,
+        width: Int,
+        height: Int,
+        densityDpi: Int,
+        flags: Int,
     ): VirtualDisplay? = runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching { HiddenApiBypass.addHiddenApiExemptions("Landroid/hardware/display/") }
@@ -669,7 +701,7 @@ internal object VirtualDisplayController {
                 densityDpi,
             )
                 .setSurface(surface)
-                .setFlags(CanvasRoutingPolicy.interactiveFlags(Build.VERSION.SDK_INT))
+                .setFlags(flags)
                 .build()
             dm.createVirtualDisplay(config)
         } else {
@@ -679,7 +711,7 @@ internal object VirtualDisplayController {
                 height,
                 densityDpi,
                 surface,
-                CanvasRoutingPolicy.interactiveFlags(Build.VERSION.SDK_INT),
+                flags,
             )
         }
     }.getOrNull()

@@ -113,8 +113,15 @@ internal class RootVirtualDisplayBridge private constructor(
                                         .trim().toIntOrNull()
                                     readyLatch.countDown()
                                 } else if (line.startsWith(VirtualDisplayCommandMain.RESULT_PREFIX)) {
-                                    failureResultLine = line
-                                    readyLatch.countDown()
+                                    // 只把 ok=false 的结果当作创建失败：诊断与降级提示不应判死画布。
+                                    val ok = runCatching {
+                                        JSONObject(line.removePrefix(VirtualDisplayCommandMain.RESULT_PREFIX).trim())
+                                            .optBoolean("ok", false)
+                                    }.getOrDefault(false)
+                                    if (!ok) {
+                                        failureResultLine = line
+                                        readyLatch.countDown()
+                                    }
                                 }
                             }
                         }
